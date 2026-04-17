@@ -1,0 +1,32 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.vscode/uv-run-python.sh",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "CONFIG_BOOTSTRAP_SERVERS": "kafka.kafka.svc.cluster.local:9092",
+                "CONFIG_APPLICATION_ID": "analytics-7f43830f-39f7-470f-9663-fd4c5dfd041e",
+                "PIPELINE_ID": "ec1e4090-13b9-4bbd-82f4-675f47dc4a08",
+                "OPERATOR_ID": "0fd89f99-3b3b-4e83-a456-88991856bbeb",
+                "WINDOW_TIME": "30",
+                "JOIN_STRATEGY": "inner",
+                "CONFIG": "{\"config\":{\"logger_level\":\"debug\"},\"inputTopics\":[{\"name\":\"urn_infai_ses_service_9ba92218-37d8-4c80-ad3d-bb3eb5c8457d\",\"filterType\":\"DeviceId\",\"filterValue\":\"urn:infai:ses:device:2ac5436e-5538-4eb3-a448-2d77de68e915\",\"mappings\":[{\"dest\":\"value\",\"source\":\"value.power.value\"}]}]}",
+                "DEVICE_ID_PATH": "device_id",
+                "CONSUMER_AUTO_OFFSET_RESET_CONFIG": "latest",
+                "USER_ID": "ca4d1149-e3ed-4e0b-9e49-3bda908de436",
+                "METRICS": "false",
+                "METRICS_PORT": "8080",
+                "OUTPUT": "analytics-operator-ml-example",
+            }
+        }
+    ]
+}

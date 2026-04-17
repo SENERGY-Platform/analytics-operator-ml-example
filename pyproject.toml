@@ -1,0 +1,17 @@
+[project]
+name = "analytics-operator-ml-example"
+version = "0.0.1"
+requires-python = "==3.10.20"
+dependencies = [
+  "uv==0.11.7",
+  "torch==2.11.0",
+  "ray[client,train]==2.55.0",
+  "tqdm==4.67.3", # better progress bars
+  "operator-lib @ git+https://github.com/SENERGY-Platform/analytics-operator-lib-python.git@9d8a5cc0127c299b9c7efd21439f362be8bef0d4"
+]
+
+[global]
+extra-index-url = "https://download.pytorch.org/whl/cpu"
+
+[tool.uv]
+package = false
