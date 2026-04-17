@@ -23,7 +23,7 @@ wheels = [
 
 [[package]]
 name = "analytics-operator-ml-example"
-version = "0.1.0"
+version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "operator-lib" },
@@ -35,7 +35,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "operator-lib", git = "https://github.com/SENERGY-Platform/analytics-operator-lib-python.git?rev=9d8a5cc0127c299b9c7efd21439f362be8bef0d4" },
+    { name = "operator-lib", git = "https://github.com/SENERGY-Platform/analytics-operator-lib-python.git?rev=v1.3.0" },
     { name = "ray", extras = ["client", "train"], specifier = "==2.55.0" },
     { name = "torch", specifier = "==2.11.0" },
     { name = "tqdm", specifier = "==4.67.3" },
@@ -1108,7 +1108,7 @@ wheels = [
 [[package]]
 name = "operator-lib"
 version = "1.1.28"
-source = { git = "https://github.com/SENERGY-Platform/analytics-operator-lib-python.git?rev=9d8a5cc0127c299b9c7efd21439f362be8bef0d4#9d8a5cc0127c299b9c7efd21439f362be8bef0d4" }
+source = { git = "https://github.com/SENERGY-Platform/analytics-operator-lib-python.git?rev=v1.3.0#df5f3dfb20f1715788034bdbebae07745faae31c" }
 dependencies = [
     { name = "concurrency-watchdog" },
     { name = "confluent-kafka" },

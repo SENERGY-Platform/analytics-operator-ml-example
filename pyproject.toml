@@ -7,7 +7,7 @@ dependencies = [
   "torch==2.11.0",
   "ray[client,train]==2.55.0",
   "tqdm==4.67.3", # better progress bars
-  "operator-lib @ git+https://github.com/SENERGY-Platform/analytics-operator-lib-python.git@9d8a5cc0127c299b9c7efd21439f362be8bef0d4"
+  "operator-lib @ git+https://github.com/SENERGY-Platform/analytics-operator-lib-python.git@v1.3.0"
 ]
 
 [global]
