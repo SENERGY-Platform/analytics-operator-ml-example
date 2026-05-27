@@ -6,13 +6,13 @@ import typing
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import ray
 
 import ray.tune
-import ray.train
 from mlflow.pyfunc import PythonModel
 
-from util import extract_timestamp_and_value
+from util import to_epoch_seconds
 from operator_lib.util.helpers import TrainMlflowLogger
 
 
@@ -60,6 +60,45 @@ def resolve_tune_batch_size_options(num_examples: int) -> typing.List[int]:
     if len(options) == 0:
         return [resolve_batch_size(num_examples)]
     return sorted(set(options))
+
+
+def parse_input_batch(batch: pa.Table) -> pa.Table:
+    empty = pa.table(
+        {
+            "ts": pa.array([], type=pa.float64()),
+            "value": pa.array([], type=pa.float64()),
+        }
+    )
+    if batch.num_rows == 0 or "value" not in batch.column_names:
+        return empty
+
+    ts_col = next(
+        (name for name in ("timestamp", "time", "ts") if name in batch.column_names),
+        None,
+    )
+    if ts_col is None:
+        return empty
+
+    ts_values = batch[ts_col].to_pylist()
+    value_values = batch["value"].to_pylist()
+
+    out_ts: typing.List[float] = []
+    out_values: typing.List[float] = []
+    for ts_raw, value_raw in zip(ts_values, value_values):
+        if ts_raw is None or value_raw is None:
+            continue
+        try:
+            out_ts.append(to_epoch_seconds(ts_raw))
+            out_values.append(float(value_raw))
+        except (TypeError, ValueError):
+            continue
+
+    return pa.table(
+        {
+            "ts": pa.array(out_ts, type=pa.float64()),
+            "value": pa.array(out_values, type=pa.float64()),
+        }
+    )
 
 
 class _StreamingOneHourPairBuilder:
@@ -163,11 +202,11 @@ def train_one_hour_ahead_model(ds: typing.List[ray.ObjectRef[ray.data.Dataset]],
                 dataset = ray.get(ds_ref) if isinstance(
                     ds_ref, ray.ObjectRef) else ds_ref
 
-                parsed_dataset = dataset.map(
-                    lambda row: (lambda p: {"ts": p[0], "value": p[1]} if p is not None else None)(
-                        extract_timestamp_and_value(row)
-                    )
-                ).filter(lambda row: row is not None)
+                parsed_dataset = dataset.map_batches(
+                    parse_input_batch,
+                    batch_format="pyarrow",
+                    batch_size=8192,
+                )
                 parsed_datasets.append(parsed_dataset)
 
         if len(parsed_datasets) == 0:
@@ -179,8 +218,8 @@ def train_one_hour_ahead_model(ds: typing.List[ray.ObjectRef[ray.data.Dataset]],
                 merged_dataset = merged_dataset.union(additional_dataset)
 
         with mlflow_logger.trace("sort_materialize"):
-            sorted_dataset = merged_dataset
-            merged_dataset.sort("ts").materialize()
+            sorted_dataset = merged_dataset.sort("ts")
+            sorted_dataset.materialize()
 
         with mlflow_logger.trace("count_points"):
             num_points = sorted_dataset.count()
@@ -271,20 +310,23 @@ def train_one_hour_ahead_model(ds: typing.List[ray.ObjectRef[ray.data.Dataset]],
             train_dataset = training_pairs_dataset.repartition(NUM_WORKERS)
 
         def train_loop_per_worker(config: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any]:
+            device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu")
             local_model = build_model(torch.nn)
+            local_model.to(device)
 
             optimizer = torch.optim.Adam(
                 local_model.parameters(), lr=float(config["lr"]))
             loss_fn = torch.nn.MSELoss()
 
             x_mean_tensor = torch.tensor(
-                config["x_mean"], dtype=torch.float32)
+                config["x_mean"], dtype=torch.float32, device=device)
             x_std_tensor = torch.tensor(
-                config["x_std"], dtype=torch.float32).clamp_min(NORMALIZATION_EPS)
+                config["x_std"], dtype=torch.float32, device=device).clamp_min(NORMALIZATION_EPS)
             y_mean_tensor = torch.tensor(
-                config["y_mean"], dtype=torch.float32)
+                config["y_mean"], dtype=torch.float32, device=device)
             y_std_tensor = torch.tensor(
-                config["y_std"], dtype=torch.float32).clamp_min(NORMALIZATION_EPS)
+                config["y_std"], dtype=torch.float32, device=device).clamp_min(NORMALIZATION_EPS)
 
             dataset_shard = config["datasets"]["train"]
 
@@ -305,8 +347,8 @@ def train_one_hour_ahead_model(ds: typing.List[ray.ObjectRef[ray.data.Dataset]],
                 steps = 0
                 for batch in batch_iter:
                     batch_x = torch.stack(
-                        (batch["ts"], batch["value"]), dim=1)
-                    batch_y = batch["target"].unsqueeze(1)
+                        (batch["ts"], batch["value"]), dim=1).to(device)
+                    batch_y = batch["target"].unsqueeze(1).to(device)
 
                     batch_x = (batch_x - x_mean_tensor) / x_std_tensor
                     batch_y = (batch_y - y_mean_tensor) / y_std_tensor
@@ -361,6 +403,7 @@ def train_one_hour_ahead_model(ds: typing.List[ray.ObjectRef[ray.data.Dataset]],
                         "steps": steps,
                         "samples": running_batch_size,
                         "epoch": epoch,
+                        "device": device.type,
                     }
                     ray.tune.report(
                         metrics,
@@ -373,11 +416,10 @@ def train_one_hour_ahead_model(ds: typing.List[ray.ObjectRef[ray.data.Dataset]],
         tune_batch_options = resolve_tune_batch_size_options(
             num_training_pairs)
 
-        with mlflow_logger.trace("hyperparameter_tuning_and_training"):
+        with mlflow_logger.trace("hyperparameter_tuning_and_training"):            
             tuner = ray.tune.Tuner(
-                train_loop_per_worker,
+                ray.tune.with_resources(train_loop_per_worker, {"GPU": 1 / NUM_WORKERS}),
                 param_space={
-                    "scaling_config": ray.train.ScalingConfig(num_workers=NUM_WORKERS, use_gpu=False),
                     "datasets": {"train": train_dataset},
                     "lr": ray.tune.loguniform(TUNE_LR_MIN, TUNE_LR_MAX),
                     "num_epochs": ray.tune.choice(list(TUNE_EPOCH_OPTIONS)),
